@@ -1,0 +1,27 @@
+# ESP-IDF SDK Configuration Defaults
+# ===================================
+# These settings are applied on first build or after fullclean.
+
+# WiFi enabled
+CONFIG_ESP_WIFI_ENABLED=y
+
+# I2S (for ADC DMA sampling)
+CONFIG_SOC_I2S_SUPPORTED=y
+
+# LWIP (for sockets/UDP)
+CONFIG_LWIP_SO_RCVBUF=y
+CONFIG_LWIP_IP_DEFAULT_TTL=64
+
+# Logging level (INFO)
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_DEFAULT_LEVEL=3
+
+# Compiler optimization (SIZE for smaller binary)
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# FreeRTOS timer task stack
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=3072
+
+# Flash size (2MB is common for ESP32-WROOM)
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="2MB"

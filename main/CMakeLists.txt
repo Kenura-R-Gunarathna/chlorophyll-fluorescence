@@ -1,0 +1,23 @@
+idf_component_register(
+    SRCS 
+        "main.cpp"
+        "ccd_sensor.cpp"
+        "ccd_dummy.cpp"
+        "wifi_ap.cpp"
+        "wifi_station.cpp"
+        "udp_broadcast.cpp"
+        "usb_serial.cpp"
+    INCLUDE_DIRS 
+        "."
+    REQUIRES
+        driver
+        esp_wifi
+        nvs_flash
+        lwip
+        esp_timer
+        esp_event
+        esp_netif
+    PRIV_REQUIRES
+        esp_adc
+        esp_driver_uart
+)
