@@ -1,52 +1,47 @@
-# Build output
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sln.docstates
+*.vcxproj.user
+
+# Build outputs
 build/
-
-# ESP-IDF specific
-sdkconfig.old
-sdkconfig.ci.*
-
-# Python bytecode
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual environment
-.venv/
-venv/
-ENV/
-
-# IDE/Editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.project
-.cproject
-.settings/
-
-# Eclipse
-*.pydevproject
-.metadata
-.gradle
-
-# macOS
-.DS_Store
-
-# Logs
+out/
+Debug/
+Release/
+x64/
+x86/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.iobj
+*.ipdb
 *.log
 
-# Dependency directories
-dependencies.lock
-managed_components/
+# vcpkg
+vcpkg_installed/
+.vcpkg-root
 
-# Crash and debug files
-core
-*.core
-*.elf
-*.map
-*.bin
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+
+# ImGui
+imgui.ini
+*.ini
 
 # Temporary files
 *.tmp
 *.temp
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

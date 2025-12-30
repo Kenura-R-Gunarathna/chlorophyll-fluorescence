@@ -1,0 +1,52 @@
+# Build output
+build/
+
+# ESP-IDF specific
+sdkconfig.old
+sdkconfig.ci.*
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+
+# Eclipse
+*.pydevproject
+.metadata
+.gradle
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Dependency directories
+dependencies.lock
+managed_components/
+
+# Crash and debug files
+core
+*.core
+*.elf
+*.map
+*.bin
+
+# Temporary files
+*.tmp
+*.temp
