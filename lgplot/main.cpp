@@ -83,6 +83,9 @@ int main(int, char**) {
 
     bool first_run = !std::ifstream(LAYOUT_INI_FILE).good();
 
+    // Load saved calibration
+    load_calibration();
+    
     log_message("TCD1304 CCD Spectrum Analyzer started");
     log_message("Select USB (COM port) or UDP (WiFi) connection");
 
@@ -106,6 +109,8 @@ int main(int, char**) {
         }
 
         draw_controls_panel();
+        draw_calibration_panel();
+        draw_snapshot_panel();
         draw_spectrum_chart();
         draw_console_panel();
 
@@ -128,6 +133,7 @@ int main(int, char**) {
     }
 
     stop_receiver();
+    save_calibration();  // Save calibration on exit
     
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

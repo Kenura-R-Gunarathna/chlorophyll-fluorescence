@@ -62,9 +62,11 @@ static void init_mclk(void) {
 // ADC CONTINUOUS INITIALIZATION
 // ============================================
 static void init_adc_continuous(void) {
+    // Need to read 3694 pixels × 2 bytes = 7388 bytes per frame
+    // Use larger buffers to accommodate full CCD line
     adc_continuous_handle_cfg_t adc_config = {
-        .max_store_buf_size = 1024 * 4,
-        .conv_frame_size = 1024, // Size in bytes
+        .max_store_buf_size = 1024 * 16,    // 16KB buffer pool (was 4KB)
+        .conv_frame_size = 1024 * 8,        // 8KB per read (was 1KB)
         .flags = {
             .flush_pool = false,
         },

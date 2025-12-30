@@ -15,7 +15,7 @@
 // ============================================
 // Set to 1 to use dummy sine wave data (for testing without hardware)
 // Set to 0 to use real CCD sensor
-#define USE_DUMMY_DATA  1
+#define USE_DUMMY_DATA  0
 
 // ============================================
 // CONNECTION MODE - How to send data to PC
@@ -27,21 +27,24 @@
 #define CONNECTION_MODE_WIFI_AP   1
 #define CONNECTION_MODE_WIFI_STA  2
 
-#define CONNECTION_MODE  CONNECTION_MODE_WIFI_STA
+#define CONNECTION_MODE  CONNECTION_MODE_USB  // Changed to USB for testing
 
 // ============================================
-// USB SERIAL CONFIG (for CONNECTION_MODE_USB)
+// USB SERIAL CONFIG (Partner's Protocol)
 // ============================================
-#define USB_BAUD_RATE       921600  // High speed serial
-#define USB_START_MARKER    0xAA
-#define USB_END_MARKER      0x55
+// Protocol: [0x11] = frame start
+//           For each pixel: [0xA5][lowByte][highByte][0x5A]
+#define USB_BAUD_RATE       1000000   // 1 Mbps (matches Processing code)
+#define USB_FRAME_START     0x11      // New data frame indicator
+#define USB_PIXEL_START     0xA5      // Pixel packet start
+#define USB_PIXEL_END       0x5A      // Pixel packet end
 
 // ============================================
 // WiFi STATION CONFIG (for CONNECTION_MODE_WIFI_STA)
 // ============================================
 // Change these to your home WiFi credentials
-#define WIFI_STA_SSID       "SLT-4G-187E"
-#define WIFI_STA_PASSWORD   "krag#xz1"
+#define WIFI_STA_SSID       "Lilo"
+#define WIFI_STA_PASSWORD   "litha@201"
 #define WIFI_STA_MAX_RETRY  10
 
 // ============================================
@@ -57,6 +60,9 @@
 // ============================================
 #define UDP_PORT            8080
 #define UDP_BROADCAST_IP    "255.255.255.255"  // Works for both AP and STA
+
+// UDP Packet format (unchanged)
+#define UDP_START_MARKER    0xAA
 
 // ============================================
 // PIN DEFINITIONS - CCD Sensor Connections

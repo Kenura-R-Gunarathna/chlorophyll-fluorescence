@@ -1,6 +1,11 @@
 /*
  * Connection Module Implementation
  * USB Serial and UDP receiver threads.
+ * 
+ * USB Serial Protocol (Partner's format):
+ * - 0x11 = New data frame indicator
+ * - For each pixel: [0xA5][lowByte][highByte][0x5A]
+ * - Baud rate: 1,000,000 (1 Mbps)
  */
 #include "connection.h"
 #include "app_state.h"
@@ -39,7 +44,7 @@ bool open_serial_port() {
     DCB dcb = {};
     dcb.DCBlength = sizeof(DCB);
     GetCommState(g_app.serial_handle, &dcb);
-    dcb.BaudRate = USB_BAUD_RATE;
+    dcb.BaudRate = USB_BAUD_RATE;  // 1,000,000 baud
     dcb.ByteSize = 8;
     dcb.Parity = NOPARITY;
     dcb.StopBits = ONESTOPBIT;
@@ -49,8 +54,8 @@ bool open_serial_port() {
     
     // Set timeouts
     COMMTIMEOUTS timeouts = {};
-    timeouts.ReadIntervalTimeout = 10;
-    timeouts.ReadTotalTimeoutConstant = 10;
+    timeouts.ReadIntervalTimeout = 1;
+    timeouts.ReadTotalTimeoutConstant = 1;
     timeouts.ReadTotalTimeoutMultiplier = 0;
     SetCommTimeouts(g_app.serial_handle, &timeouts);
     
@@ -68,72 +73,114 @@ void close_serial_port() {
     }
 }
 
+/**
+ * USB Serial receiver thread - Partner's protocol
+ * 
+ * Protocol:
+ * - 0x11 indicates start of new data frame
+ * - Each pixel: [0xA5][lowByte][highByte][0x5A]
+ * - 3694 pixels per frame
+ */
 static void usb_receiver_thread() {
     log_message("USB Serial receiver started on %s", g_app.com_port);
+    log_message("Protocol: 0x11=frame, 0xA5+data+0x5A=pixel");
     
-    std::vector<uint8_t> buffer(8 + CCD_PIXEL_COUNT * 2 + 100);
+    std::vector<uint8_t> buffer(16384);  // Large buffer for high-speed serial
     size_t buffer_pos = 0;
+    
+    int pixel_index = 0;
+    bool receiving_frame = false;
+    std::vector<float> temp_pixels(CCD_PIXEL_COUNT, 0.0f);
     
     auto last_stats_time = std::chrono::steady_clock::now();
     uint32_t packets_since_last = 0;
+    uint32_t pixels_this_frame = 0;
     
     while (g_app.receiver_running) {
-        // Read into buffer
+        // Read bytes from serial port
         DWORD bytes_read = 0;
-        if (ReadFile(g_app.serial_handle, buffer.data() + buffer_pos, 
-                    (DWORD)(buffer.size() - buffer_pos), &bytes_read, NULL)) {
-            buffer_pos += bytes_read;
+        uint8_t byte;
+        
+        if (!ReadFile(g_app.serial_handle, &byte, 1, &bytes_read, NULL) || bytes_read == 0) {
+            // No data available, short sleep to prevent CPU spin
+            Sleep(1);
+            continue;
         }
         
-        // Look for complete packets: [0xAA] [seq_hi] [seq_lo] [cnt_hi] [cnt_lo] [data...] [0x55]
-        while (buffer_pos >= 6) {
-            // Find start marker
+        // Add byte to buffer
+        if (buffer_pos < buffer.size()) {
+            buffer[buffer_pos++] = byte;
+        }
+        
+        // Check for frame start marker (0x11)
+        if (byte == USB_FRAME_START) {
+            if (receiving_frame && pixel_index > 0) {
+                // Previous frame complete, copy to display
+                {
+                    std::lock_guard<std::mutex> lock(g_app.data_mutex);
+                    for (int i = 0; i < pixel_index && i < CCD_PIXEL_COUNT; i++) {
+                        g_app.spectrum_data[i] = temp_pixels[i];
+                    }
+                }
+                g_app.packets_received++;
+                packets_since_last++;
+                log_message("Frame complete: %d pixels", pixel_index);
+            }
+            
+            // Start new frame
+            receiving_frame = true;
+            pixel_index = 0;
+            pixels_this_frame = 0;
+            buffer_pos = 0;
+            continue;
+        }
+        
+        // If not receiving a frame, skip
+        if (!receiving_frame) {
+            buffer_pos = 0;
+            continue;
+        }
+        
+        // Look for pixel packets: [0xA5][lowByte][highByte][0x5A]
+        // We need at least 4 bytes in buffer
+        while (buffer_pos >= 4) {
+            // Find 0xA5 start byte
             size_t start = 0;
-            while (start < buffer_pos && buffer[start] != USB_START_MARKER) {
+            while (start < buffer_pos && buffer[start] != USB_PIXEL_START) {
                 start++;
             }
             
+            // Remove bytes before start marker
             if (start > 0) {
-                // Shift buffer
                 memmove(buffer.data(), buffer.data() + start, buffer_pos - start);
                 buffer_pos -= start;
             }
             
-            if (buffer_pos < 6) break;
+            // Need at least 4 bytes for a complete pixel packet
+            if (buffer_pos < 4) break;
             
-            // Parse header
-            uint16_t pixel_count = (buffer[3] << 8) | buffer[4];
-            size_t expected_size = 5 + pixel_count * 2 + 1;  // header + data + end marker
-            
-            if (pixel_count > CCD_PIXEL_COUNT) {
-                // Invalid count, skip this byte
-                memmove(buffer.data(), buffer.data() + 1, buffer_pos - 1);
-                buffer_pos--;
-                continue;
-            }
-            
-            if (buffer_pos < expected_size) break;  // Wait for more data
-            
-            // Verify end marker
-            if (buffer[expected_size - 1] == USB_END_MARKER) {
-                uint16_t sequence = (buffer[1] << 8) | buffer[2];
-                uint16_t* pixels = reinterpret_cast<uint16_t*>(&buffer[5]);
+            // Check if this is a valid pixel packet
+            if (buffer[0] == USB_PIXEL_START && buffer[3] == USB_PIXEL_END) {
+                // Extract 12-bit pixel value (little-endian)
+                uint8_t low_byte = buffer[1];
+                uint8_t high_byte = buffer[2];
+                uint16_t pixel_value = low_byte | (high_byte << 8);
                 
-                {
-                    std::lock_guard<std::mutex> lock(g_app.data_mutex);
-                    for (uint16_t i = 0; i < pixel_count; ++i) {
-                        g_app.spectrum_data[i] = static_cast<float>(pixels[i]);
-                    }
+                // Store pixel value
+                if (pixel_index < CCD_PIXEL_COUNT) {
+                    temp_pixels[pixel_index] = static_cast<float>(pixel_value);
+                    pixel_index++;
+                    pixels_this_frame++;
                 }
                 
-                g_app.packets_received++;
-                g_app.last_sequence = sequence;
-                packets_since_last++;
+                // Remove processed packet
+                memmove(buffer.data(), buffer.data() + 4, buffer_pos - 4);
+                buffer_pos -= 4;
+            } else {
+                // Invalid packet, skip one byte and try again
+                memmove(buffer.data(), buffer.data() + 1, buffer_pos - 1);
+                buffer_pos--;
             }
-            
-            // Remove processed packet
-            memmove(buffer.data(), buffer.data() + expected_size, buffer_pos - expected_size);
-            buffer_pos -= expected_size;
         }
         
         // Update packets per second
@@ -141,6 +188,7 @@ static void usb_receiver_thread() {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_stats_time).count();
         if (elapsed >= 1000) {
             g_app.packets_per_second = packets_since_last * 1000.0f / elapsed;
+            g_app.last_sequence = pixels_this_frame;  // Show pixels in current frame
             packets_since_last = 0;
             last_stats_time = now;
         }
