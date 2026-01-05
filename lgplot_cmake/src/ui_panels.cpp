@@ -470,23 +470,57 @@ void draw_calibration_panel() {
     ImGui::TextWrapped("Enter two known wavelengths and their pixel positions.");
     
     ImGui::Separator();
-    
+
     // Calibration point 1
     ImGui::Text("Point 1:");
     ImGui::SetNextItemWidth(100);
-    ImGui::InputInt("Pixel 1", &g_app.cal_point1.pixel_index);
+    ImGui::InputInt("px-1(idx)", &g_app.cal_point1.pixel_index);
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip(
+            "Pixel index on the sensor or image\n"
+            "corresponding to calibration point 1.\n\n"
+            "Example: 512"
+        );
+    }
+
     ImGui::SameLine();
     ImGui::SetNextItemWidth(100);
-    ImGui::InputFloat("nm 1", &g_app.cal_point1.wavelength_nm, 0.0f, 0.0f, "%.1f");
-    
+    ImGui::InputFloat("wl-1(nm)", &g_app.cal_point1.wavelength_nm, 0.0f, 0.0f, "%.1f");
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip(
+            "Known wavelength in nanometers (nm)\n"
+            "for calibration point 1.\n\n"
+            "Example: 589.0 nm (Na D-line)"
+        );
+    }
+
     // Calibration point 2
     ImGui::Text("Point 2:");
     ImGui::SetNextItemWidth(100);
-    ImGui::InputInt("Pixel 2", &g_app.cal_point2.pixel_index);
+    ImGui::InputInt("px-2(idx)", &g_app.cal_point2.pixel_index);
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip(
+            "Pixel index on the sensor or image\n"
+            "corresponding to calibration point 2.\n\n"
+            "Example: 1024"
+        );
+    }
+
     ImGui::SameLine();
     ImGui::SetNextItemWidth(100);
-    ImGui::InputFloat("nm 2", &g_app.cal_point2.wavelength_nm, 0.0f, 0.0f, "%.1f");
-    
+    ImGui::InputFloat("wl-2(nm)", &g_app.cal_point2.wavelength_nm, 0.0f, 0.0f, "%.1f");
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::SetTooltip(
+            "Known wavelength in nanometers (nm)\n"
+            "for calibration point 2.\n\n"
+            "Example: 656.3 nm (Hα line)"
+        );
+    }
+
     ImGui::Separator();
     
     if (ImGui::Button("Apply Calibration", ImVec2(-1, 0))) {

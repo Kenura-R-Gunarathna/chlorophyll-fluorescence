@@ -50,3 +50,4 @@ core
 # Temporary files
 *.tmp
 *.temp
+.cache
