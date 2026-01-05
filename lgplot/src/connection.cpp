@@ -7,7 +7,9 @@
  * - For each pixel: [0xA5][lowByte][highByte][0x5A]
  * - Baud rate: 1,000,000 (1 Mbps)
  *
- * NOTE: Serial and UDP features are Windows-only for now.
+ * Cross-platform support:
+ * - Windows: Winsock + CreateFile for serial
+ * - Linux: POSIX sockets + termios for serial
  */
 #include "connection.h"
 #include "app_state.h"
@@ -15,17 +17,31 @@
 
 #include <chrono>
 #include <cstring>
+#include <vector>
 
 #ifdef _WIN32
 #include <ws2tcpip.h>
+#else
+// Linux/Unix includes
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <termios.h>
+#include <unistd.h>
+
+#define closesocket close
+#define SOCKET_ERROR (-1)
 #endif
 
 namespace lgplot {
 
+// ============================================
+// USB SERIAL
+// ============================================
 #ifdef _WIN32
-// ============================================
-// USB SERIAL (Windows-only)
-// ============================================
+// Windows serial port implementation
 bool open_serial_port() {
   char port_path[64];
   snprintf(port_path, sizeof(port_path), "\\\\.\\%s", g_app.com_port);
@@ -42,7 +58,7 @@ bool open_serial_port() {
   DCB dcb = {};
   dcb.DCBlength = sizeof(DCB);
   GetCommState(g_app.serial_handle, &dcb);
-  dcb.BaudRate = USB_BAUD_RATE; // 1,000,000 baud
+  dcb.BaudRate = USB_BAUD_RATE;
   dcb.ByteSize = 8;
   dcb.Parity = NOPARITY;
   dcb.StopBits = ONESTOPBIT;
@@ -71,19 +87,93 @@ void close_serial_port() {
   }
 }
 
+#else
+// Linux serial port implementation using termios
+bool open_serial_port() {
+  // On Linux, com_port should be like "/dev/ttyUSB0" or "/dev/ttyACM0"
+  // If user set "COM3", convert to Linux format
+  char port_path[64];
+  if (strncmp(g_app.com_port, "COM", 3) == 0) {
+    int port_num = atoi(g_app.com_port + 3);
+    snprintf(port_path, sizeof(port_path), "/dev/ttyUSB%d", port_num - 1);
+  } else if (g_app.com_port[0] != '/') {
+    snprintf(port_path, sizeof(port_path), "/dev/%s", g_app.com_port);
+  } else {
+    strncpy(port_path, g_app.com_port, sizeof(port_path));
+  }
+
+  g_app.serial_handle = open(port_path, O_RDWR | O_NOCTTY | O_NONBLOCK);
+
+  if (g_app.serial_handle < 0) {
+    log_message("ERROR: Failed to open %s: %s", port_path, strerror(errno));
+    return false;
+  }
+
+  // Configure serial port with termios
+  struct termios tty;
+  memset(&tty, 0, sizeof(tty));
+
+  if (tcgetattr(g_app.serial_handle, &tty) != 0) {
+    log_message("ERROR: tcgetattr failed");
+    close(g_app.serial_handle);
+    g_app.serial_handle = INVALID_HANDLE_VALUE;
+    return false;
+  }
+
+  // Set baud rate (1000000 = B1000000 on Linux)
+  cfsetispeed(&tty, B1000000);
+  cfsetospeed(&tty, B1000000);
+
+  // 8N1 mode
+  tty.c_cflag &= ~PARENB; // No parity
+  tty.c_cflag &= ~CSTOPB; // 1 stop bit
+  tty.c_cflag &= ~CSIZE;
+  tty.c_cflag |= CS8;            // 8 data bits
+  tty.c_cflag &= ~CRTSCTS;       // No hardware flow control
+  tty.c_cflag |= CREAD | CLOCAL; // Enable receiver, ignore modem control lines
+
+  // Raw input mode
+  tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+  tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+  tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+
+  // Raw output mode
+  tty.c_oflag &= ~OPOST;
+
+  // Non-blocking read with minimal timeout
+  tty.c_cc[VMIN] = 0;
+  tty.c_cc[VTIME] = 1; // 100ms timeout
+
+  if (tcsetattr(g_app.serial_handle, TCSANOW, &tty) != 0) {
+    log_message("ERROR: tcsetattr failed");
+    close(g_app.serial_handle);
+    g_app.serial_handle = INVALID_HANDLE_VALUE;
+    return false;
+  }
+
+  // Flush buffers
+  tcflush(g_app.serial_handle, TCIOFLUSH);
+
+  log_message("Opened %s @ %d baud", port_path, USB_BAUD_RATE);
+  return true;
+}
+
+void close_serial_port() {
+  if (g_app.serial_handle != INVALID_HANDLE_VALUE) {
+    close(g_app.serial_handle);
+    g_app.serial_handle = INVALID_HANDLE_VALUE;
+  }
+}
+#endif
+
 /**
- * USB Serial receiver thread - Partner's protocol
- *
- * Protocol:
- * - 0x11 indicates start of new data frame
- * - Each pixel: [0xA5][lowByte][highByte][0x5A]
- * - 3694 pixels per frame
+ * USB Serial receiver thread - Partner's protocol (cross-platform)
  */
 static void usb_receiver_thread() {
   log_message("USB Serial receiver started on %s", g_app.com_port);
   log_message("Protocol: 0x11=frame, 0xA5+data+0x5A=pixel");
 
-  std::vector<uint8_t> buffer(16384); // Large buffer for high-speed serial
+  std::vector<uint8_t> buffer(16384);
   size_t buffer_pos = 0;
 
   int pixel_index = 0;
@@ -95,16 +185,22 @@ static void usb_receiver_thread() {
   uint32_t pixels_this_frame = 0;
 
   while (g_app.receiver_running) {
-    // Read bytes from serial port
-    DWORD bytes_read = 0;
     uint8_t byte;
 
+#ifdef _WIN32
+    DWORD bytes_read = 0;
     if (!ReadFile(g_app.serial_handle, &byte, 1, &bytes_read, NULL) ||
         bytes_read == 0) {
-      // No data available, short sleep to prevent CPU spin
       Sleep(1);
       continue;
     }
+#else
+    ssize_t bytes_read = read(g_app.serial_handle, &byte, 1);
+    if (bytes_read <= 0) {
+      usleep(1000); // 1ms
+      continue;
+    }
+#endif
 
     // Add byte to buffer
     if (buffer_pos < buffer.size()) {
@@ -114,7 +210,6 @@ static void usb_receiver_thread() {
     // Check for frame start marker (0x11)
     if (byte == USB_FRAME_START) {
       if (receiving_frame && pixel_index > 0) {
-        // Previous frame complete, copy to display
         {
           std::lock_guard<std::mutex> lock(g_app.data_mutex);
           for (int i = 0; i < pixel_index && i < CCD_PIXEL_COUNT; i++) {
@@ -126,7 +221,6 @@ static void usb_receiver_thread() {
         log_message("Frame complete: %d pixels", pixel_index);
       }
 
-      // Start new frame
       receiving_frame = true;
       pixel_index = 0;
       pixels_this_frame = 0;
@@ -134,63 +228,52 @@ static void usb_receiver_thread() {
       continue;
     }
 
-    // If not receiving a frame, skip
     if (!receiving_frame) {
       buffer_pos = 0;
       continue;
     }
 
     // Look for pixel packets: [0xA5][lowByte][highByte][0x5A]
-    // We need at least 4 bytes in buffer
     while (buffer_pos >= 4) {
-      // Find 0xA5 start byte
       size_t start = 0;
       while (start < buffer_pos && buffer[start] != USB_PIXEL_START) {
         start++;
       }
 
-      // Remove bytes before start marker
       if (start > 0) {
         memmove(buffer.data(), buffer.data() + start, buffer_pos - start);
         buffer_pos -= start;
       }
 
-      // Need at least 4 bytes for a complete pixel packet
       if (buffer_pos < 4)
         break;
 
-      // Check if this is a valid pixel packet
       if (buffer[0] == USB_PIXEL_START && buffer[3] == USB_PIXEL_END) {
-        // Extract 12-bit pixel value (little-endian)
         uint8_t low_byte = buffer[1];
         uint8_t high_byte = buffer[2];
         uint16_t pixel_value = low_byte | (high_byte << 8);
 
-        // Store pixel value
         if (pixel_index < CCD_PIXEL_COUNT) {
           temp_pixels[pixel_index] = static_cast<float>(pixel_value);
           pixel_index++;
           pixels_this_frame++;
         }
 
-        // Remove processed packet
         memmove(buffer.data(), buffer.data() + 4, buffer_pos - 4);
         buffer_pos -= 4;
       } else {
-        // Invalid packet, skip one byte and try again
         memmove(buffer.data(), buffer.data() + 1, buffer_pos - 1);
         buffer_pos--;
       }
     }
 
-    // Update packets per second
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                        now - last_stats_time)
                        .count();
     if (elapsed >= 1000) {
       g_app.packets_per_second = packets_since_last * 1000.0f / elapsed;
-      g_app.last_sequence = pixels_this_frame; // Show pixels in current frame
+      g_app.last_sequence = pixels_this_frame;
       packets_since_last = 0;
       last_stats_time = now;
     }
@@ -210,7 +293,7 @@ bool start_usb_receiver() {
 }
 
 // ============================================
-// UDP RECEIVER (Windows-only)
+// UDP RECEIVER (Cross-platform)
 // ============================================
 #pragma pack(push, 1)
 struct UdpPacketHeader {
@@ -233,13 +316,13 @@ static void udp_receiver_thread() {
 
   while (g_app.receiver_running) {
     sockaddr_in sender_addr;
-    int sender_len = sizeof(sender_addr);
+    socklen_t sender_len = sizeof(sender_addr);
 
-    int bytes =
-        recvfrom(g_app.udp_socket, (char *)buffer.data(), (int)buffer.size(), 0,
+    ssize_t bytes =
+        recvfrom(g_app.udp_socket, (char *)buffer.data(), buffer.size(), 0,
                  (sockaddr *)&sender_addr, &sender_len);
 
-    if (bytes > 0 && bytes >= (int)sizeof(UdpPacketHeader)) {
+    if (bytes > 0 && bytes >= (ssize_t)sizeof(UdpPacketHeader)) {
       if (buffer[0] == 0xAA) {
         auto *header = reinterpret_cast<UdpPacketHeader *>(buffer.data());
 
@@ -276,23 +359,37 @@ static void udp_receiver_thread() {
 }
 
 bool start_udp_receiver() {
+#ifdef _WIN32
   WSADATA wsa_data;
   if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
     log_message("ERROR: WSAStartup failed");
     return false;
   }
+#endif
 
   g_app.udp_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (g_app.udp_socket == INVALID_SOCKET) {
     log_message("ERROR: Failed to create socket");
+#ifdef _WIN32
     WSACleanup();
+#endif
     return false;
   }
 
+  // Set receive timeout
+#ifdef _WIN32
   DWORD timeout = 10;
   setsockopt(g_app.udp_socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout,
              sizeof(timeout));
+#else
+  struct timeval timeout;
+  timeout.tv_sec = 0;
+  timeout.tv_usec = 10000; // 10ms
+  setsockopt(g_app.udp_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+             sizeof(timeout));
+#endif
 
+  // Set receive buffer size
   int rcvbuf = 256 * 1024;
   setsockopt(g_app.udp_socket, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf,
              sizeof(rcvbuf));
@@ -306,7 +403,9 @@ bool start_udp_receiver() {
       SOCKET_ERROR) {
     log_message("ERROR: Failed to bind to port %d", UDP_PORT);
     closesocket(g_app.udp_socket);
+#ifdef _WIN32
     WSACleanup();
+#endif
     return false;
   }
 
@@ -319,7 +418,7 @@ bool start_udp_receiver() {
 }
 
 // ============================================
-// CONNECTION MANAGEMENT (Windows)
+// CONNECTION MANAGEMENT
 // ============================================
 void stop_receiver() {
   g_app.receiver_running = false;
@@ -332,45 +431,14 @@ void stop_receiver() {
       closesocket(g_app.udp_socket);
       g_app.udp_socket = INVALID_SOCKET;
     }
+#ifdef _WIN32
     WSACleanup();
+#endif
   } else if (g_app.connection_mode == ConnectionMode::USB) {
     close_serial_port();
   }
 
   g_app.connection_mode = ConnectionMode::None;
 }
-
-#else
-// ============================================
-// LINUX STUBS (Not implemented yet)
-// ============================================
-bool open_serial_port() {
-  log_message("ERROR: Serial port not supported on Linux");
-  return false;
-}
-
-void close_serial_port() {
-  // No-op on Linux
-}
-
-bool start_usb_receiver() {
-  log_message("ERROR: USB receiver not supported on Linux");
-  return false;
-}
-
-bool start_udp_receiver() {
-  log_message("ERROR: UDP receiver not supported on Linux");
-  return false;
-}
-
-void stop_receiver() {
-  g_app.receiver_running = false;
-  if (g_app.receiver_thread.joinable()) {
-    g_app.receiver_thread.join();
-  }
-  g_app.connection_mode = ConnectionMode::None;
-}
-
-#endif // _WIN32
 
 } // namespace lgplot
