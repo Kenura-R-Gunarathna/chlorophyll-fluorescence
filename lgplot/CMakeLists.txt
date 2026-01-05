@@ -18,7 +18,7 @@ find_package(OpenGL REQUIRED)
 
 # lgplot executable with modular structure
 add_executable(lgplot 
-    "main.cpp"
+    "src/main.cpp"
     "src/app_state.cpp"
     "src/console.cpp"
     "src/connection.cpp"
