@@ -37,12 +37,20 @@ jobs:
     - name: Package
       run: |
         mkdir release
-        copy lgplot\build\Release\lgplot.exe release\ 2>nul || copy lgplot\build\lgplot.exe release\
-        copy lgplot\build\Release\*.dll release\ 2>nul || echo "No Release DLLs"
-        copy lgplot\build\*.dll release\ 2>nul || echo "No root DLLs"
-        copy ${{ github.workspace }}\vcpkg\installed\x64-windows\bin\*.dll release\ 2>nul || echo "No vcpkg DLLs"
+        if (Test-Path "lgplot\build\Release\lgplot.exe") {
+          copy lgplot\build\Release\lgplot.exe release\
+        } elseif (Test-Path "lgplot\build\lgplot.exe") {
+          copy lgplot\build\lgplot.exe release\
+        }
+        # Copy any DLLs from build directory
+        Get-ChildItem -Path lgplot\build -Filter "*.dll" -Recurse | Copy-Item -Destination release\ -ErrorAction SilentlyContinue
+        # Copy vcpkg DLLs if they exist
+        $vcpkgBin = "${{ github.workspace }}\vcpkg\installed\x64-windows\bin"
+        if (Test-Path $vcpkgBin) {
+          Get-ChildItem -Path $vcpkgBin -Filter "*.dll" | Copy-Item -Destination release\ -ErrorAction SilentlyContinue
+        }
         copy README.md release\
-        copy BUILDING_MACOS.md release\ 2>nul || echo "No macOS doc"
+        if (Test-Path "BUILDING_MACOS.md") { copy BUILDING_MACOS.md release\ }
         Compress-Archive -Path release\* -DestinationPath lgplot-Windows-x64.zip
         
     - name: Upload Artifact
