@@ -927,37 +927,35 @@ void setup_default_docking_layout(ImGuiID dockspace_id) {
   ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
   ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
 
-  // Split: Left panel | Main area
+  // Split: Left panel (25%) | Main area (75%)
   ImGuiID dock_left, dock_main;
-  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.22f, &dock_left,
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.25f, &dock_left,
                               &dock_main);
 
-  // Left panel: 4 sections stacked
-  ImGuiID dock_left_1, dock_left_2, dock_left_3, dock_left_4;
-  ImGui::DockBuilderSplitNode(dock_left, ImGuiDir_Down, 0.75f, &dock_left_4,
-                              &dock_left_1);
-  ImGui::DockBuilderSplitNode(dock_left_4, ImGuiDir_Down, 0.66f, &dock_left_4,
-                              &dock_left_2);
-  ImGui::DockBuilderSplitNode(dock_left_4, ImGuiDir_Down, 0.5f, &dock_left_4,
-                              &dock_left_3);
+  // Left panel: Top section | Bottom section (split 50/50)
+  ImGuiID dock_left_top, dock_left_bottom;
+  ImGui::DockBuilderSplitNode(dock_left, ImGuiDir_Down, 0.5f, &dock_left_bottom,
+                              &dock_left_top);
 
-  // Main area: Charts on top, Console on bottom
-  ImGuiID dock_charts, dock_bottom;
-  ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Down, 0.25f, &dock_bottom,
+  // Main area: Charts on top (75%), Console on bottom (25%)
+  ImGuiID dock_charts, dock_console;
+  ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Down, 0.25f, &dock_console,
                               &dock_charts);
 
-  // Dock windows
-  ImGui::DockBuilderDockWindow("Controls", dock_left_1);
-  ImGui::DockBuilderDockWindow("Calibration", dock_left_2);
-  ImGui::DockBuilderDockWindow("Snapshot & Export", dock_left_3);
-  ImGui::DockBuilderDockWindow("Snapshot History", dock_left_4);
+  // Left top: Snapshot & Export + Controls as tabs
+  ImGui::DockBuilderDockWindow("Snapshot & Export", dock_left_top);
+  ImGui::DockBuilderDockWindow("Controls", dock_left_top); // Tabbed
 
-  // Charts as tabs (Spectrum and History Preview side by side or tabbed)
+  // Left bottom: Calibration + Snapshot History as tabs
+  ImGui::DockBuilderDockWindow("Calibration", dock_left_bottom);
+  ImGui::DockBuilderDockWindow("Snapshot History", dock_left_bottom); // Tabbed
+
+  // Right top: Spectrum + History Preview as tabs
   ImGui::DockBuilderDockWindow("Spectrum", dock_charts);
-  ImGui::DockBuilderDockWindow("History Preview",
-                               dock_charts); // Tabbed with Spectrum
+  ImGui::DockBuilderDockWindow("History Preview", dock_charts); // Tabbed
 
-  ImGui::DockBuilderDockWindow("Console", dock_bottom);
+  // Right bottom: Console
+  ImGui::DockBuilderDockWindow("Console", dock_console);
 
   ImGui::DockBuilderFinish(dockspace_id);
 }
