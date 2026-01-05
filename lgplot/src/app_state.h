@@ -13,19 +13,9 @@
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <winsock2.h>
-
-#else
-// Linux/Unix equivalents
-#include <unistd.h>
-typedef int SOCKET;
-typedef int HANDLE;
-#define INVALID_SOCKET (-1)
-#define INVALID_HANDLE_VALUE (-1)
-#endif
 
 namespace lgplot {
 

@@ -50,7 +50,6 @@ jobs:
           Get-ChildItem -Path $vcpkgBin -Filter "*.dll" | Copy-Item -Destination release\ -ErrorAction SilentlyContinue
         }
         copy README.md release\
-        if (Test-Path "BUILDING_MACOS.md") { copy BUILDING_MACOS.md release\ }
         Compress-Archive -Path release\* -DestinationPath lgplot-Windows-x64.zip
         
     - name: Upload Artifact
@@ -59,58 +58,8 @@ jobs:
         name: lgplot-Windows-x64
         path: lgplot-Windows-x64.zip
 
-  build-linux:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          libgl1-mesa-dev \
-          libglu1-mesa-dev \
-          libx11-dev \
-          libxrandr-dev \
-          libxinerama-dev \
-          libxcursor-dev \
-          libxi-dev \
-          libxext-dev \
-          pkg-config
-      
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-        vcpkgGitCommitId: 'c82f74667287d3dc386bce81e44964370c91a289'
-        
-    - name: Configure CMake
-      working-directory: lgplot
-      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-      
-    - name: Build
-      working-directory: lgplot
-      run: cmake --build build --config ${{ env.BUILD_TYPE }}
-      
-    - name: Package
-      run: |
-        mkdir -p release
-        cp lgplot/build/lgplot release/
-        cp README.md release/
-        cp BUILDING_MACOS.md release/ 2>/dev/null || true
-        chmod +x release/lgplot
-        tar -czvf lgplot-Linux-x64.tar.gz -C release .
-        
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: lgplot-Linux-x64
-        path: lgplot-Linux-x64.tar.gz
-
   release:
-    needs: [build-windows, build-linux]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     
@@ -128,7 +77,6 @@ jobs:
       with:
         files: |
           artifacts/lgplot-Windows-x64/lgplot-Windows-x64.zip
-          artifacts/lgplot-Linux-x64/lgplot-Linux-x64.tar.gz
         body: |
           ## TCD1304 CCD Spectrum Analyzer
           
@@ -136,19 +84,12 @@ jobs:
           | Platform | File |
           |----------|------|
           | Windows x64 | `lgplot-Windows-x64.zip` |
-          | Linux x64 | `lgplot-Linux-x64.tar.gz` |
           
           ### Windows
           1. Extract the zip file
           2. Run `lgplot.exe`
           
-          ### Linux
-          1. Extract: `tar -xzvf lgplot-Linux-x64.tar.gz`
-          2. Run: `./lgplot`
-          
-          ### macOS
-          > **Note**: macOS builds require manual compilation due to OpenGL loader compatibility.
-          > See [BUILDING_MACOS.md](https://github.com/${{ github.repository }}/blob/main/BUILDING_MACOS.md) for instructions.
+          > **Note**: This application is Windows-only. macOS and Linux are not supported.
           
         draft: false
         prerelease: false

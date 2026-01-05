@@ -9,7 +9,6 @@
 #include <cstdio>
 #include <ctime>
 
-
 namespace lgplot {
 
 void log_message(const char *fmt, ...) {
@@ -22,11 +21,7 @@ void log_message(const char *fmt, ...) {
   auto now = std::chrono::system_clock::now();
   auto time = std::chrono::system_clock::to_time_t(now);
   tm local_tm;
-#ifdef _WIN32
   localtime_s(&local_tm, &time);
-#else
-  localtime_r(&time, &local_tm);
-#endif
 
   char time_str[32];
   strftime(time_str, sizeof(time_str), "%H:%M:%S", &local_tm);
