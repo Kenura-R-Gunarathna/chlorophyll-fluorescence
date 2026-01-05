@@ -5,6 +5,7 @@
 #pragma once
 
 #include "imgui.h"
+#include <string>
 
 namespace lgplot {
 
@@ -35,5 +36,13 @@ bool export_snapshot();
 
 // Peak detection
 void detect_peaks();
+
+// Project management
+void scan_projects();
+void create_project(const char *name, const char *description);
+void save_project_json(int project_index);
+std::string get_current_project_folder();
+void draw_new_project_popup();
+void draw_exit_dialog();
 
 } // namespace lgplot

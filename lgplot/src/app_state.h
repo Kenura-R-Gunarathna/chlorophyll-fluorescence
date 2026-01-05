@@ -13,7 +13,6 @@
 #include <thread>
 #include <vector>
 
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -41,6 +40,14 @@ struct Peak {
 struct CalibrationPoint {
   int pixel_index;
   float wavelength_nm;
+};
+
+// Project structure for organizing snapshots
+struct Project {
+  std::string name;        // Display name
+  std::string folder_name; // Folder name (sanitized)
+  std::string description;
+  std::string created; // ISO timestamp
 };
 
 struct AppState {
@@ -107,6 +114,16 @@ struct AppState {
 
   // Export settings
   char export_folder[256] = "snapshots";
+
+  // Project management
+  std::vector<Project> projects;          // Available projects
+  int current_project_index = 0;          // Selected project (0 = Default)
+  char new_project_name[128] = "";        // For "New Project" input
+  char new_project_description[512] = ""; // For "New Project" input
+  bool show_new_project_popup = false;    // Show new project dialog
+  bool project_needs_save = false;        // Unsaved project changes
+  bool show_exit_dialog = false;          // Show exit confirmation dialog
+  bool should_exit = false;               // App should exit after dialog
 
   AppState() {
     spectrum_data.resize(CCD_PIXEL_COUNT, 0.0f);
