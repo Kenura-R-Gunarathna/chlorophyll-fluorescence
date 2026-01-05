@@ -21,6 +21,7 @@
 
 #ifdef _WIN32
 #include <ws2tcpip.h>
+typedef long ssize_t; // POSIX ssize_t equivalent for Windows
 #else
 // Linux/Unix includes
 #include <arpa/inet.h>
