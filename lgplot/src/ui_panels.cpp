@@ -18,9 +18,7 @@
 #include <iomanip>
 #include <sstream>
 
-#ifdef _WIN32
 #include <windows.h>
-#endif
 
 namespace lgplot {
 
