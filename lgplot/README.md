@@ -1,6 +1,7 @@
-# lgplot_cmake - TCD1304 CCD Spectrum Analyzer
+# lgplot - TCD1304 CCD Spectrum Analyzer
 
 Real-time spectrum visualization for TCD1304 CCD sensor data. **CMake-based project** with clean Visual Studio integration.
+
 
 ## ✨ Features
 
@@ -13,7 +14,7 @@ Real-time spectrum visualization for TCD1304 CCD sensor data. **CMake-based proj
 ## 🏗️ Project Structure
 
 ```
-lgplot_cmake/
+lgplot/
 ├── main.cpp                 # Application entry point
 ├── src/
 │   ├── config.h            # Constants & configuration
